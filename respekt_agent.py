@@ -15,9 +15,11 @@ from email import encoders
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
 import logging
 
 # Konfigurace
@@ -60,7 +62,10 @@ class RespektDownloader:
         }
         chrome_options.add_experimental_option("prefs", prefs)
         
-        self.driver = webdriver.Chrome(options=chrome_options)
+        self.driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=chrome_options
+        )
         self.wait = WebDriverWait(self.driver, 20)
     
     def login(self):
