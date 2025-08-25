@@ -1,0 +1,49 @@
+# .github/workflows/respekt-agent.yml
+name: Respekt EPUB Downloader
+
+on:
+  schedule:
+    # Každou neděli ve 13:00 UTC (14:00 CET v zimě, 15:00 CEST v létě)
+    - cron: '0 13 * * 0'
+  
+  # Umožní ruční spuštění pro testování
+  workflow_dispatch:
+
+jobs:
+  download-and-send:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install selenium requests beautifulsoup4
+        # Instalace Chrome a ChromeDriver
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+    
+    - name: Setup ChromeDriver
+      uses: nanasess/setup-chromedriver@v2
+    
+    - name: Run Respekt agent
+      env:
+        RESPEKT_LOGIN: ${{ secrets.RESPEKT_LOGIN }}
+        RESPEKT_PASSWORD: ${{ secrets.RESPEKT_PASSWORD }}
+        GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        KINDLE_EMAIL: ${{ secrets.KINDLE_EMAIL }}
+      run: python respekt_agent.py
+    
+    - name: Upload logs as artifact (optional)
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: respekt-logs
+        path: respekt.log
