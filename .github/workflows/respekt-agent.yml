@@ -18,19 +18,13 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.11'
     
     - name: Install dependencies
       run: |
-        pip install selenium requests beautifulsoup4
-        # Instalace Chrome a ChromeDriver
-        sudo apt-get update
-        sudo apt-get install -y google-chrome-stable
-    
-    - name: Setup ChromeDriver
-      uses: nanasess/setup-chromedriver@v2
+        pip install selenium requests beautifulsoup4 webdriver-manager
     
     - name: Run Respekt agent
       env:
@@ -43,7 +37,7 @@ jobs:
     
     - name: Upload logs as artifact (optional)
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: respekt-logs
         path: respekt.log
