@@ -8,6 +8,7 @@ import os
 import time
 import smtplib
 import requests
+import re
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -244,7 +245,7 @@ class RespektDownloader:
     def find_current_issue(self):
         """Najde a stáhne aktuální číslo z archivu"""
         try:
-            logger.info("Hledám aktuální číslo v archivu...")
+            logger.info("Hledám aktuální vydání v archivu...")
             
             # Jdi do archivu
             self.driver.get("https://www.respekt.cz/archiv")
@@ -259,7 +260,7 @@ class RespektDownloader:
                 issue_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, 'cislo') or contains(@href, 'vydani')]")
             
             if not issue_links:
-                logger.error("Nenašel jsem žádné odkazy na čísla časopisu")
+                logger.error("Nenašel jsem žádné odkazy na vydání v archivu")
                 return None
             
             # Vezmi první (nejnovější) číslo
@@ -285,22 +286,24 @@ class RespektDownloader:
             
             logger.info(f"Stránka vydání načtena, title: {self.driver.title}")
             
-            # Hledej odkaz na EPUB - může být API endpoint nebo přímý odkaz
+            # Hledej odkaz na EPUB - víme, že má formát /api/downloadEPub?issueId=...
             epub_selectors = [
-                # Přímý API odkaz
+                # API endpoint má prioritu
                 "//a[contains(@href, '/api/downloadEPub')]",
+                "//button[contains(@onclick, '/api/downloadEPub')]",
+                # Tlačítko pro stažení
+                "//button[contains(text(), 'Stáhnout epub')]",
+                "//a[contains(text(), 'Stáhnout epub')]",
+                "//button[contains(text(), 'EPUB')]",
+                "//a[contains(text(), 'EPUB')]",
                 # Obecné EPUB odkazy
                 "//a[contains(@href, '.epub')]",
-                "//a[contains(text(), 'EPUB')]",
-                "//a[contains(text(), 'epub')]", 
-                "//a[contains(@class, 'epub')]",
                 "//a[contains(@href, 'epub')]",
-                "//button[contains(text(), 'EPUB')]",
-                "//a[contains(text(), 'Stáhnout') and (contains(text(), 'EPUB') or contains(@href, 'epub'))]",
-                # Možné CSS třídy
+                # CSS selektory
+                "button[onclick*='downloadEPub']",
+                "a[href*='/api/downloadEPub']",
                 ".download-epub",
-                ".epub-download",
-                ".download-link"
+                ".epub-download"
             ]
             
             epub_element = None
@@ -343,15 +346,41 @@ class RespektDownloader:
             
             # Získej URL pro stažení
             epub_url = epub_element.get_attribute('href')
+            
             if not epub_url:
-                # Možná je to button, zkusme kliknout a zachytit request
-                logger.info("Element nemá href, zkouším kliknout...")
-                epub_element.click()
-                time.sleep(2)
-                # Po kliknutí by se mělo něco stát - možná redirect nebo download
-                # TODO: Implementovat zachycení download URL
-                logger.error("Kliknutí na element nepřineslo URL pro stažení")
-                return None
+                # Možná je to tlačítko s onclick událostí
+                onclick_attr = epub_element.get_attribute('onclick')
+                if onclick_attr and 'downloadEPub' in onclick_attr:
+                    # Extrahuj URL z onclick
+                    import re
+                    match = re.search(r'/api/downloadEPub\?issueId=([a-f0-9-]+)', onclick_attr)
+                    if match:
+                        epub_url = f"https://www.respekt.cz/api/downloadEPub?issueId={match.group(1)}"
+                        logger.info(f"Extrahovana URL z onclick: {epub_url}")
+                    
+                if not epub_url:
+                    # Zkus kliknout na tlačítko a zachytit network request
+                    logger.info("Element nemá href, zkouším kliknout a zachytit download...")
+                    
+                    # Před kliknutím si poznač současnou URL
+                    current_url = self.driver.current_url
+                    
+                    try:
+                        epub_element.click()
+                        time.sleep(3)
+                        
+                        # Zkontroluj, jestli se změnila URL nebo začal download
+                        new_url = self.driver.current_url
+                        if new_url != current_url and 'downloadEPub' in new_url:
+                            epub_url = new_url
+                            logger.info(f"Po kliknutí získána URL: {epub_url}")
+                        else:
+                            logger.error("Kliknutí na tlačítko nepřineslo download URL")
+                            return None
+                            
+                    except Exception as click_error:
+                        logger.error(f"Chyba při klikání na tlačítko: {click_error}")
+                        return None
             
             logger.info(f"Nalezen EPUB URL: {epub_url}")
             
