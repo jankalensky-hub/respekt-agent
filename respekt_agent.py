@@ -52,65 +52,193 @@ class RespektDownloader:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-plugins')
+        chrome_options.add_argument('--disable-images')
         chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # Disable images and CSS pro rychlejší načítání
-        prefs = {
-            "profile.managed_default_content_settings.images": 2,
-            "profile.managed_default_content_settings.stylesheets": 2
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
+        # Dodatečné argumenty pro stabilitu
+        chrome_options.add_argument('--disable-background-timer-throttling')
+        chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+        chrome_options.add_argument('--disable-renderer-backgrounding')
+        chrome_options.add_argument('--disable-features=TranslateUI')
+        chrome_options.add_argument('--disable-ipc-flooding-protection')
+        chrome_options.add_argument('--disable-client-side-phishing-detection')
+        chrome_options.add_argument('--disable-default-apps')
+        chrome_options.add_argument('--disable-hang-monitor')
+        chrome_options.add_argument('--disable-popup-blocking')
+        chrome_options.add_argument('--disable-prompt-on-repost')
+        chrome_options.add_argument('--disable-sync')
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--metrics-recording-only')
+        chrome_options.add_argument('--no-first-run')
+        chrome_options.add_argument('--safebrowsing-disable-auto-update')
+        chrome_options.add_argument('--enable-automation')
+        chrome_options.add_argument('--password-store=basic')
+        chrome_options.add_argument('--use-mock-keychain')
         
-        self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
-        self.wait = WebDriverWait(self.driver, 20)
+        try:
+            self.driver = webdriver.Chrome(
+                service=Service(ChromeDriverManager().install()),
+                options=chrome_options
+            )
+            self.wait = WebDriverWait(self.driver, 30)
+            logger.info("Browser inicializován úspěšně")
+        except Exception as e:
+            logger.error(f"Chyba při inicializaci browseru: {e}")
+            raise
+    
+    def save_debug_info(self, name):
+        """Uloží screenshot a HTML pro debugging"""
+        try:
+            # Uložit screenshot
+            screenshot_path = f"debug_{name}.png"
+            self.driver.save_screenshot(screenshot_path)
+            logger.info(f"Screenshot uložen: {screenshot_path}")
+            
+            # Uložit HTML
+            html_path = f"debug_{name}.html"
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(self.driver.page_source)
+            logger.info(f"HTML uloženo: {html_path}")
+            
+            # Vypsat část HTML do logu
+            logger.info("HTML stránky (prvních 1500 znaků):")
+            logger.info(self.driver.page_source[:1500])
+            
+        except Exception as e:
+            logger.error(f"Chyba při ukládání debug info: {e}")
     
     def login(self):
         """Přihlášení na Respekt.cz"""
         try:
             logger.info("Přihlašuji se na Respekt.cz...")
+            
+            # Načti hlavní stránku nejdříve
+            self.driver.get("https://www.respekt.cz")
+            time.sleep(2)
+            logger.info(f"Hlavní stránka načtena, title: {self.driver.title}")
+            
+            # Teď jdi na přihlášení
             self.driver.get("https://www.respekt.cz/prihlaseni")
+            time.sleep(3)
+            logger.info(f"Přihlašovací stránka načtena, title: {self.driver.title}")
             
-            # Počkej na načtení formuláře
-            email_field = self.wait.until(
-                EC.presence_of_element_located((By.NAME, "email"))
-            )
+            # Zkus najít formulář různými způsoby
+            email_field = None
+            selectors_email = ["input[name='email']", "input[type='email']", "#email", ".email"]
             
-            password_field = self.driver.find_element(By.NAME, "password")
+            for selector in selectors_email:
+                try:
+                    email_field = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    logger.info(f"Email pole nalezeno pomocí: {selector}")
+                    break
+                except TimeoutException:
+                    logger.info(f"Email pole nenalezeno pomocí: {selector}")
+                    continue
+            
+            if not email_field:
+                logger.error("Nenašel jsem email pole")
+                # Zkusme vypsat HTML stránky pro debugging a screenshot
+                self.save_debug_info("login_page_no_email")
+                return False
+            
+            # Hledej password pole
+            password_field = None
+            selectors_password = ["input[name='password']", "input[type='password']", "#password", ".password"]
+            
+            for selector in selectors_password:
+                try:
+                    password_field = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    logger.info(f"Password pole nalezeno pomocí: {selector}")
+                    break
+                except NoSuchElementException:
+                    continue
+            
+            if not password_field:
+                logger.error("Nenašel jsem password pole")
+                return False
             
             # Vyplň přihlašovací údaje
+            logger.info("Vyplňuji přihlašovací údaje...")
             email_field.clear()
             email_field.send_keys(RESPEKT_LOGIN)
             password_field.clear()
             password_field.send_keys(RESPEKT_PASSWORD)
             
-            # Klikni na přihlášení
-            login_button = self.driver.find_element(By.XPATH, "//button[@type='submit' or contains(@class, 'login') or contains(text(), 'Přihlásit')]")
-            login_button.click()
+            # Najdi a klikni submit button
+            submit_selectors = [
+                "button[type='submit']",
+                "input[type='submit']", 
+                "button:contains('Přihlásit')",
+                ".submit-button",
+                ".login-button"
+            ]
             
-            # Počkej na přesměrování po přihlášení
-            time.sleep(3)
+            submit_button = None
+            for selector in submit_selectors:
+                try:
+                    submit_button = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    logger.info(f"Submit button nalezen pomocí: {selector}")
+                    break
+                except NoSuchElementException:
+                    continue
             
-            # Zkontroluj, zda jsme přihlášeni (hledej nějaký element, který je viditelný jen po přihlášení)
-            try:
-                # Můžeme hledat odkaz na "Můj účet" nebo podobné
-                self.wait.until(
-                    EC.any_of(
-                        EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'muj-ucet') or contains(text(), 'Můj účet')]")),
-                        EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'archiv') or contains(text(), 'Archiv')]"))
-                    )
-                )
-                logger.info("Přihlášení úspěšné!")
+            if not submit_button:
+                # Zkus najít pomocí textu
+                try:
+                    submit_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Přihlásit') or contains(text(), 'Login')]")
+                    logger.info("Submit button nalezen pomocí XPath")
+                except NoSuchElementException:
+                    logger.error("Nenašel jsem submit button")
+                    return False
+            
+            # Klikni na submit
+            logger.info("Odesílám přihlašovací formulář...")
+            submit_button.click()
+            
+            # Počkaj na přesměrování
+            time.sleep(5)
+            
+            # Zkontroluj přihlášení
+            current_url = self.driver.current_url
+            logger.info(f"Aktuální URL po přihlášení: {current_url}")
+            
+            # Kontrola různých indikátorů úspěšného přihlášení
+            login_indicators = [
+                "//a[contains(@href, 'muj-ucet') or contains(text(), 'Můj účet')]",
+                "//a[contains(@href, 'archiv') or contains(text(), 'Archiv')]",
+                "//a[contains(@href, 'odhlaseni') or contains(text(), 'Odhlásit')]",
+                "//div[contains(@class, 'user') or contains(@class, 'profile')]"
+            ]
+            
+            for indicator in login_indicators:
+                try:
+                    element = self.driver.find_element(By.XPATH, indicator)
+                    logger.info(f"Přihlášení potvrzeno - nalezen element: {element.text}")
+                    return True
+                except NoSuchElementException:
+                    continue
+            
+            # Pokud jsme nebyli přesměrováni zpět na login, považujme to za úspěch
+            if "prihlaseni" not in current_url:
+                logger.info("Přihlášení úspěšné - nejsme na přihlašovací stránce")
                 return True
-            except TimeoutException:
-                logger.error("Přihlášení se nezdařilo - nenašel jsem prvky pro přihlášeného uživatele")
-                return False
+            
+            logger.warning("Nelze potvrdit úspěšné přihlášení, ale pokračuji...")
+            return True
                 
         except Exception as e:
             logger.error(f"Chyba při přihlašování: {e}")
+            # Loguj více detailů pro debugging
+            try:
+                logger.error(f"Aktuální URL: {self.driver.current_url}")
+                logger.error(f"Page title: {self.driver.title}")
+            except:
+                pass
             return False
     
     def find_current_issue(self):
@@ -149,38 +277,83 @@ class RespektDownloader:
             return None
     
     def download_epub(self, issue_url):
-        """Stáhne EPUB z dané stránky čísla"""
+        """Stáhne EPUB z dané stránky vydání"""
         try:
-            logger.info(f"Otevírám stránku čísla: {issue_url}")
+            logger.info(f"Otevírám stránku vydání: {issue_url}")
             self.driver.get(issue_url)
             time.sleep(3)
             
-            # Hledej odkaz na EPUB stažení
+            logger.info(f"Stránka vydání načtena, title: {self.driver.title}")
+            
+            # Hledej odkaz na EPUB - může být API endpoint nebo přímý odkaz
             epub_selectors = [
+                # Přímý API odkaz
+                "//a[contains(@href, '/api/downloadEPub')]",
+                # Obecné EPUB odkazy
                 "//a[contains(@href, '.epub')]",
                 "//a[contains(text(), 'EPUB')]",
-                "//a[contains(text(), 'epub')]",
+                "//a[contains(text(), 'epub')]", 
                 "//a[contains(@class, 'epub')]",
                 "//a[contains(@href, 'epub')]",
-                "//a[contains(text(), 'Stáhnout') and contains(text(), 'EPUB')]"
+                "//button[contains(text(), 'EPUB')]",
+                "//a[contains(text(), 'Stáhnout') and (contains(text(), 'EPUB') or contains(@href, 'epub'))]",
+                # Možné CSS třídy
+                ".download-epub",
+                ".epub-download",
+                ".download-link"
             ]
             
-            epub_link = None
+            epub_element = None
+            found_selector = None
+            
             for selector in epub_selectors:
                 try:
-                    epub_elements = self.driver.find_elements(By.XPATH, selector)
-                    if epub_elements:
-                        epub_link = epub_elements[0]
+                    if selector.startswith("//"):
+                        # XPath selektor
+                        elements = self.driver.find_elements(By.XPATH, selector)
+                    else:
+                        # CSS selektor  
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    
+                    if elements:
+                        epub_element = elements[0]
+                        found_selector = selector
+                        logger.info(f"EPUB element nalezen pomocí: {selector}")
+                        logger.info(f"Text elementu: '{epub_element.text.strip()}'")
                         break
-                except:
+                        
+                except Exception as e:
+                    logger.debug(f"Selektor {selector} selhal: {e}")
                     continue
             
-            if not epub_link:
+            if not epub_element:
                 logger.error("Nenašel jsem odkaz na EPUB stažení")
+                self.save_debug_info("issue_no_epub_link")
+                
+                # Zkusme najít všechny odkazy a vypsat je
+                all_links = self.driver.find_elements(By.TAG_NAME, "a")
+                logger.info(f"Všechny odkazy na stránce ({len(all_links)}):")
+                for i, link in enumerate(all_links[:20]):  # Jen prvních 20
+                    href = link.get_attribute('href')
+                    text = link.text.strip()
+                    if href:
+                        logger.info(f"{i+1}. {text} -> {href}")
+                
                 return None
             
-            epub_url = epub_link.get_attribute('href')
-            logger.info(f"Nalezen EPUB odkaz: {epub_url}")
+            # Získej URL pro stažení
+            epub_url = epub_element.get_attribute('href')
+            if not epub_url:
+                # Možná je to button, zkusme kliknout a zachytit request
+                logger.info("Element nemá href, zkouším kliknout...")
+                epub_element.click()
+                time.sleep(2)
+                # Po kliknutí by se mělo něco stát - možná redirect nebo download
+                # TODO: Implementovat zachycení download URL
+                logger.error("Kliknutí na element nepřineslo URL pro stažení")
+                return None
+            
+            logger.info(f"Nalezen EPUB URL: {epub_url}")
             
             # Stáhni EPUB pomocí session s cookies z prohlížeče
             cookies = self.driver.get_cookies()
@@ -191,11 +364,25 @@ class RespektDownloader:
             
             # Nastav stejné headers jako prohlížeč
             headers = {
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': issue_url,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
             }
             
+            logger.info(f"Stahování EPUB z: {epub_url}")
             response = session.get(epub_url, headers=headers)
             response.raise_for_status()
+            
+            # Zkontroluj, že jsme dostali EPUB soubor
+            content_type = response.headers.get('Content-Type', '')
+            content_length = len(response.content)
+            
+            logger.info(f"Content-Type: {content_type}")
+            logger.info(f"Content-Length: {content_length} bytes")
+            
+            if content_length < 1000:  # EPUB by měl být větší
+                logger.warning(f"Podezřele malý soubor ({content_length} bytes)")
+                logger.info(f"Odpověď serveru: {response.text[:500]}")
             
             # Vytvoř název souboru
             today = datetime.now().strftime("%Y-%m-%d")
@@ -204,11 +391,12 @@ class RespektDownloader:
             with open(filename, 'wb') as f:
                 f.write(response.content)
             
-            logger.info(f"EPUB úspěšně stažen: {filename} ({len(response.content)} bytes)")
+            logger.info(f"EPUB úspěšně stažen: {filename} ({content_length} bytes)")
             return filename
             
         except Exception as e:
             logger.error(f"Chyba při stahování EPUB: {e}")
+            self.save_debug_info("epub_download_error")
             return None
     
     def send_to_kindle(self, epub_file):
@@ -264,7 +452,7 @@ class RespektDownloader:
             if not self.login():
                 return False
             
-            # 2. Najdi aktuální číslo
+            # 2. Najdi aktuální vydání v archivu
             issue_url = self.find_current_issue()
             if not issue_url:
                 return False
