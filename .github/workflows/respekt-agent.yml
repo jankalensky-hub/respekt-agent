@@ -3,8 +3,8 @@ name: Respekt EPUB Downloader
 
 on:
   schedule:
-    # Každou neděli ve 13:00 UTC (14:00 CET v zimě, 15:00 CEST v létě)
-    - cron: '0 13 * * 0'
+    # Každou neděli ve 12:00 UTC (13:00 CET v zimě, 14:00 CEST v létě)
+    - cron: '0 12 * * 0'
   
   # Umožní ruční spuštění pro testování
   workflow_dispatch:
