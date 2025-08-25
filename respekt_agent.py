@@ -467,7 +467,8 @@ class RespektDownloader:
     def run(self):
         """Hlavní metoda - spustí celý proces"""
         try:
-            logger.info("=== Spouštím Respekt EPUB Downloader ===")
+            logger.info("=== Spouštím Respekt EPUB Downloader v2.0 ===")
+            logger.info("Verze: Přímé URL strategie s backup systémem")
             
             # Kontrola proměnných prostředí
             required_vars = ['RESPEKT_LOGIN', 'RESPEKT_PASSWORD', 'GMAIL_EMAIL', 'GMAIL_APP_PASSWORD', 'KINDLE_EMAIL']
