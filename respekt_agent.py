@@ -120,8 +120,8 @@ class RespektDownloader:
             time.sleep(2)
             logger.info(f"Hlavní stránka načtena, title: {self.driver.title}")
             
-            # Teď jdi na přihlášení
-            self.driver.get("https://www.respekt.cz/prihlaseni")
+            # Teď jdi na přihlášení  
+            self.driver.get("https://www.respekt.cz/uzivatel/prihlaseni")
             time.sleep(3)
             logger.info(f"Přihlašovací stránka načtena, title: {self.driver.title}")
             
