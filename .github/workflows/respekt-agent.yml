@@ -33,11 +33,14 @@ jobs:
         GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         KINDLE_EMAIL: ${{ secrets.KINDLE_EMAIL }}
-      run: python respekt_agent.py
+      run: python respekt_downloader.py
     
-    - name: Upload logs as artifact (optional)
+    - name: Upload debug files as artifact (optional)
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: respekt-logs
-        path: respekt.log
+        name: respekt-debug-files
+        path: |
+          respekt.log
+          debug_*.png
+          debug_*.html
